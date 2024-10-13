@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="Python 3.12 (shuffling_ai)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.12 (shuffling_ai)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.12 (ai_generation_shuffling)" project-jdk-type="Python SDK" />
 </project>
