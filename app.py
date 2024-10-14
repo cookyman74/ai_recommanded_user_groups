@@ -134,17 +134,17 @@ def calculate_group_similarity(group, all_features):
 
 # **2. 자유 텍스트 태그 생성 함수**
 def generate_tags_from_text(column, text, config):
-    # if config and column in config['tag_options']:
-    #     prompt = f"문장: {text}\n다음 리스트에서 관련된 태그를 선택하여 제시만 해주세요:\n  {', '.join(config['tag_options'][column])}."
-    #     try:
-    #         response = openai.ChatCompletion.create(
-    #             model="gpt-4o-mini",
-    #             messages=[{"role": "user", "content": prompt}]
-    #         )
-    #         return response['choices'][0]['message']['content'].strip()
-    #     except Exception as e:
-    #         logging.error(f"OpenAI API 호출 실패: {e}")
-    #         return "API Error"
+    if config and column in config['tag_options']:
+        prompt = f"문장: {text}\n다음 리스트에서 관련된 태그를 선택하여 제시만 해주세요:\n  {', '.join(config['tag_options'][column])}."
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response['choices'][0]['message']['content'].strip()
+        except Exception as e:
+            logging.error(f"OpenAI API 호출 실패: {e}")
+            return "API Error"
     return "No Tags"
 
 
