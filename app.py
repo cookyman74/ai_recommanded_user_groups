@@ -31,7 +31,7 @@ def load_config():
         st.error(f"config.yml 파일 로드 오류: {e}")
         return {}
 
-
+# 유사도 계산
 def calculate_similarity(user1, user2, feature_weights, all_features):
     similarity = 0
     for feature, weight in feature_weights.items():
@@ -47,7 +47,7 @@ def calculate_similarity(user1, user2, feature_weights, all_features):
             similarity += (user1[feature] == user2[feature]) * weight
     return similarity / sum(feature_weights.values())
 
-
+# 그룹 생성 : 클러스터링 그룹 생성 및 재배정.
 def create_mixed_groups(users_df, all_features, min_group_size=6, max_group_size=8, min_females=3):
     females_df = users_df[users_df['Gender'] == 'Female']
     males_df = users_df[users_df['Gender'] == 'Male']
@@ -75,7 +75,7 @@ def create_mixed_groups(users_df, all_features, min_group_size=6, max_group_size
                             other_group_similarities = all_features.loc[other_group.index].apply(
                                 lambda x: cosine_similarity([x], [group_center])[0][0], axis=1
                             )
-                            least_similar = other_group.loc[other_group_similarities.idxmin()]
+                            least_similar = other_group.loc[other_group_similarities.idxmin()] # 유사도가 가장 낮은 사용자.
 
                             # 여성 이동
                             groups[i] = pd.concat([groups[i], least_similar.to_frame().T], ignore_index=True)
