@@ -65,21 +65,27 @@ def create_mixed_groups(users_df, all_features, min_group_size=6, max_group_size
 
     # 3명 미만 그룹 재조정
     def redistribute_females(groups, min_count):
+        assigned_users = set()  # 이미 그룹에 할당된 사용자를 추적
         while any(len(group) < min_count for group in groups):
             for i, group in enumerate(groups):
                 if len(group) < min_count:
                     for j, other_group in enumerate(groups):
                         if len(other_group) > min_count:
-                            # 유사도가 가장 낮은 여성 찾기
+                            # 가장 유사도가 낮은 여성 찾기
                             group_center = all_features.loc[group.index].mean()
                             other_group_similarities = all_features.loc[other_group.index].apply(
                                 lambda x: cosine_similarity([x], [group_center])[0][0], axis=1
                             )
-                            least_similar = other_group.loc[other_group_similarities.idxmin()] # 유사도가 가장 낮은 사용자.
+                            least_similar = other_group.loc[other_group_similarities.idxmin()]
 
-                            # 여성 이동
+                            # 중복 확인: 이미 배정된 사용자는 스킵
+                            if least_similar.name in assigned_users:
+                                continue
+
+                            # 사용자 이동 및 추적
                             groups[i] = pd.concat([groups[i], least_similar.to_frame().T], ignore_index=True)
                             groups[j] = groups[j].drop(least_similar.name)
+                            assigned_users.add(least_similar.name)
                             break
                     break
         return groups
@@ -100,13 +106,18 @@ def create_mixed_groups(users_df, all_features, min_group_size=6, max_group_size
 
         # 그룹에 남성 추가 (최대 8명까지)
         males_to_add = min(max_group_size - len(group), len(remaining_males))
+
         if males_to_add > 0:
             male_similarities = remaining_males.apply(
-                lambda male: np.mean([calculate_similarity(male, female, feature_weights, all_features) for _, female in
-                                      group.iterrows()]),
+                lambda male: np.mean([
+                    calculate_similarity(male, female, feature_weights, all_features)
+                    for _, female in group.iterrows()
+                ]),
                 axis=1
             )
             top_males = remaining_males.loc[male_similarities.nlargest(males_to_add).index]
+
+            # 중복 방지: 선택된 남성들을 remaining_males에서 제거
             group = pd.concat([group, top_males], ignore_index=True)
             remaining_males = remaining_males.drop(top_males.index)
 
@@ -135,7 +146,11 @@ def calculate_group_similarity(group, all_features):
 # **2. 자유 텍스트 태그 생성 함수**
 def generate_tags_from_text(column, text, config):
     if config and column in config['tag_options']:
-        prompt = f"문장: {text}\n다음 리스트에서 관련된 태그를 선택하여 제시만 해주세요:\n  {', '.join(config['tag_options'][column])}."
+        prompt = f"""
+        문장: {text}
+        다음 리스트에서 관련된 태그를 쉼표(,)로 구분하여 반환해 주세요:
+        {', '.join(config['tag_options'][column])}.
+        """
         try:
             response = openai.ChatCompletion.create(
                 model="gpt-4o-mini",
@@ -150,9 +165,18 @@ def generate_tags_from_text(column, text, config):
 
 # **3. 다중 값 컬럼 처리 함수**
 def process_multi_value_column(column, df):
-    split_data = df[column].str.split(',', expand=True)
+    # NaN 값을 빈 문자열로 대체해 예외 방지
+    valid_data = df[column].fillna("").astype(str)
+
+    # 쉼표(,)를 기준으로 문자열을 분리
+    split_data = valid_data.str.split(',', expand=True)
+
+    # 각 값에 대해 원-핫 인코딩 수행
     dummies = pd.get_dummies(split_data, prefix=column)
+
+    # 인덱스를 기준으로 그룹화하여 최대값으로 병합 (하나라도 값이 있으면 1로 표시)
     return dummies.groupby(level=0, axis=1).max()
+
 
 # **4. 그룹 재배정 함수 (여성 그룹 보충)**
 def reallocate_female_groups(female_groups, insufficient_groups):
@@ -253,7 +277,7 @@ def main():
         for column in config.get("text_columns", []):
             if column in df.columns:
                 df[column + "_tags"] = df[column].apply(lambda x: generate_tags_from_text(column, str(x), config))
-                tag_dummies = pd.get_dummies(df[column + "_tags"], prefix=column)
+                tag_dummies = process_multi_value_column(column + "_tags", df)
                 df = pd.concat([df, tag_dummies], axis=1)
 
         hobby_dummies = process_multi_value_column('Hobby', df)
