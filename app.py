@@ -43,6 +43,14 @@ def calculate_similarity(user1, user2, feature_weights, all_features):
                 similarity += (1 - norm_diff) * weight
             else:
                 similarity += weight
+        elif 'tags' in feature.lower():  # 태그 유사도 계산
+            user1_tags = set([tag.strip() for tag in user1[feature].split(',')])
+            user2_tags = set([tag.strip() for tag in user2[feature].split(',')])
+            if user1_tags and user2_tags:
+                tag_similarity = len(user1_tags & user2_tags) / len(user1_tags | user2_tags)
+            else:
+                tag_similarity = 0  # 태그가 없을 경우 유사도는 0
+            similarity += tag_similarity * weight
         else:
             similarity += (user1[feature] == user2[feature]) * weight
     return similarity / sum(feature_weights.values())
@@ -98,7 +106,8 @@ def create_mixed_groups(users_df, all_features, min_group_size=6, max_group_size
 
     feature_weights = {
         'Job': 0.2, 'MBTI': 0.2, 'Hobby': 0.2, 'Ideal Type': 0.1,
-        'Age': 0.1, 'Height': 0.1, 'Weight': 0.1
+        'Age': 0.1, 'Height': 0.1, 'Weight': 0.1,
+        'Tags': 0.3
     }
 
     for female_group in female_groups:
@@ -129,7 +138,8 @@ def create_mixed_groups(users_df, all_features, min_group_size=6, max_group_size
 def calculate_group_similarity(group, all_features):
     feature_weights = {
         'Job': 0.2, 'MBTI': 0.2, 'Hobby': 0.2, 'Ideal Type': 0.1,
-        'Age': 0.1, 'Height': 0.1, 'Weight': 0.1
+        'Age': 0.1, 'Height': 0.1, 'Weight': 0.1,
+        'Tags': 0.3
     }
 
     similarities = []
@@ -281,10 +291,11 @@ def main():
                 df = pd.concat([df, tag_dummies], axis=1)
 
         hobby_dummies = process_multi_value_column('Hobby', df)
-        ideal_type_dummies = process_multi_value_column('Ideal Type', df)
+        # ideal_type_dummies = process_multi_value_column('Ideal Type', df)
         features = pd.get_dummies(df[['Preference', 'MBTI', 'Job', 'Gender']])
         numerical_features = df[['Age', 'Height', 'Weight']]
-        all_features = pd.concat([features, hobby_dummies, ideal_type_dummies, numerical_features], axis=1)
+        # all_features = pd.concat([features, hobby_dummies, ideal_type_dummies, numerical_features], axis=1)
+        all_features = pd.concat([features, hobby_dummies, numerical_features], axis=1)
 
         # 그룹 생성
         all_groups, remaining_users = create_mixed_groups(df, all_features)
