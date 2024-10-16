@@ -44,19 +44,20 @@ def calculate_similarity(user1, user2, feature_weights, all_features):
             else:
                 similarity += weight
         elif 'tags' in feature.lower():  # 태그 유사도 계산
-            user1_tags = set([tag.strip() for tag in user1[feature].split(',')])
-            user2_tags = set([tag.strip() for tag in user2[feature].split(',')])
-            if user1_tags and user2_tags:
-                tag_similarity = len(user1_tags & user2_tags) / len(user1_tags | user2_tags)
-            else:
-                tag_similarity = 0  # 태그가 없을 경우 유사도는 0
+            # 태그 정규화 (소문자 변환 및 공백 제거)
+            user1_tags = set([tag.strip().lower() for tag in user1[feature].split(',')])
+            user2_tags = set([tag.strip().lower() for tag in user2[feature].split(',')])
+
+            # 교집합 / 합집합으로 유사도 계산
+            tag_similarity = len(user1_tags & user2_tags) / len(
+                user1_tags | user2_tags) if user1_tags | user2_tags else 0
             similarity += tag_similarity * weight
         else:
             similarity += (user1[feature] == user2[feature]) * weight
     return similarity / sum(feature_weights.values())
 
 # 그룹 생성 : 클러스터링 그룹 생성 및 재배정.
-def create_mixed_groups(users_df, all_features, min_group_size=6, max_group_size=8, min_females=3):
+def create_mixed_groups(users_df, all_features, feature_weights, min_group_size=6, max_group_size=8, min_females=3):
     females_df = users_df[users_df['Gender'] == 'Female']
     males_df = users_df[users_df['Gender'] == 'Male']
 
@@ -104,12 +105,6 @@ def create_mixed_groups(users_df, all_features, min_group_size=6, max_group_size
     final_groups = []
     remaining_males = males_df.copy()
 
-    feature_weights = {
-        'Job': 0.2, 'MBTI': 0.2, 'Hobby': 0.2, 'Ideal Type': 0.1,
-        'Age': 0.1, 'Height': 0.1, 'Weight': 0.1,
-        'Tags': 0.3
-    }
-
     for female_group in female_groups:
         group = female_group.copy()
 
@@ -135,13 +130,7 @@ def create_mixed_groups(users_df, all_features, min_group_size=6, max_group_size
     return final_groups, remaining_males
 
 
-def calculate_group_similarity(group, all_features):
-    feature_weights = {
-        'Job': 0.2, 'MBTI': 0.2, 'Hobby': 0.2, 'Ideal Type': 0.1,
-        'Age': 0.1, 'Height': 0.1, 'Weight': 0.1,
-        'Tags': 0.3
-    }
-
+def calculate_group_similarity(group, all_features, feature_weights):
     similarities = []
     for i in range(len(group)):
         for j in range(i + 1, len(group)):
@@ -150,7 +139,6 @@ def calculate_group_similarity(group, all_features):
             similarities.append(calculate_similarity(user1, user2, feature_weights, all_features))
 
     return np.mean(similarities) if similarities else 0
-
 
 
 # **2. 자유 텍스트 태그 생성 함수**
@@ -278,17 +266,58 @@ def generate_openai_response(summary):
 # **9. 메인 실행 로직**
 def main():
     config = load_config()
+    feature_weights = config.get("feature_weights", {})
+    if not feature_weights:
+        st.warning("feature_weights 설정이 비어 있습니다. 기본 가중치를 사용합니다.")
+
     uploaded_file = st.file_uploader("엑셀 파일을 업로드하세요.", type="xlsx")
 
     if uploaded_file:
         df = pd.read_excel(uploaded_file)
         st.write("업로드된 유저 데이터:", df)
 
+        # 데이터 통계 출력
+        st.markdown("### 업로드된 전체 데이터 통계 요약")
+        total_applicants = len(df)
+        male_count = len(df[df['Gender'] == 'Male'])
+        female_count = len(df[df['Gender'] == 'Female'])
+        male_ratio = (male_count / total_applicants) * 100 if total_applicants > 0 else 0
+        female_ratio = (female_count / total_applicants) * 100 if total_applicants > 0 else 0
+        average_age = df['Age'].mean()
+        average_height = df['Height'].mean()
+        average_weight = df['Weight'].mean()
+
+        st.write(f"🔢 **총 신청자 수**: {total_applicants}명")
+        st.write(f"👨‍💼 **남성 인원**: {male_count}명 ({male_ratio:.2f}%)")
+        st.write(f"👩‍💼 **여성 인원**: {female_count}명 ({female_ratio:.2f}%)")
+        st.write(f"📊 **평균 나이**: {average_age:.1f}세")
+        st.write(f"📏 **평균 키**: {average_height:.1f}cm")
+        st.write(f"⚖ **평균 몸무게**: {average_weight:.1f}kg")
+
+        # 추가 통계 제안: 지역 분포, 직업 분포, MBTI 분포 등
+        st.write("**지역별 신청자 수**")
+        st.write(df['Location'].value_counts())
+
+        st.write("**직업별 분포**")
+        st.write(df['Job'].value_counts())
+
+        st.write("**MBTI별 분포**")
+        st.write(df['MBTI'].value_counts())
+
+        # 'My answer_tags_'로 시작하는 모든 컬럼 병합하여 'Tags' 컬럼 생성
+        df['Tags'] = df.filter(like='My answer_tags_').apply(lambda row: ','.join(row.dropna()), axis=1)
+        print("병합된 Tags 컬럼 예시: ", df[['User ID', 'Tags']].head())
+
+        # 'My answer_tags_'로 시작하는 모든 컬럼 병합하여 'Tags' 컬럼 생성
+        df['Tags'] = df.filter(like='My answer_tags_').apply(lambda row: ','.join(row.dropna()), axis=1)
+        print("병합된 Tags 컬럼 예시: ", df[['User ID', 'Tags']].head())
+
         for column in config.get("text_columns", []):
             if column in df.columns:
                 df[column + "_tags"] = df[column].apply(lambda x: generate_tags_from_text(column, str(x), config))
                 tag_dummies = process_multi_value_column(column + "_tags", df)
                 df = pd.concat([df, tag_dummies], axis=1)
+
 
         hobby_dummies = process_multi_value_column('Hobby', df)
         # ideal_type_dummies = process_multi_value_column('Ideal Type', df)
@@ -298,7 +327,7 @@ def main():
         all_features = pd.concat([features, hobby_dummies, numerical_features], axis=1)
 
         # 그룹 생성
-        all_groups, remaining_users = create_mixed_groups(df, all_features)
+        all_groups, remaining_users = create_mixed_groups(df, all_features, feature_weights=feature_weights)
 
         # 결과 출력 보고서
         current_date = datetime.now().strftime("%Y년 %m월 %d일")
@@ -307,7 +336,7 @@ def main():
         # 셔플링 그룹 결과 출력 >>>>
         for idx, group in enumerate(all_groups):
             # 그룹 유사도 계산
-            group_similarity = calculate_group_similarity(group, all_features)
+            group_similarity = calculate_group_similarity(group, all_features, feature_weights)
 
             st.markdown(f"## 🌟 셔플링 그룹 {idx + 1}")
             st.markdown(f"#### 📌 기본 정보")
