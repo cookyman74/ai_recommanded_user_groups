@@ -154,7 +154,9 @@ def generate_tags_from_text(column, text, config):
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}]
             )
-            return response['choices'][0]['message']['content'].strip()
+            tags = response['choices'][0]['message']['content'].strip()
+            print(f"Generated tags for {column}: {tags}")  # 로그 추가
+            return tags
         except Exception as e:
             logging.error(f"OpenAI API 호출 실패: {e}")
             return "API Error"
@@ -244,14 +246,16 @@ def allocate_remaining_users(groups, remaining_males):
             st.warning(f"그룹 {groups.index(group) + 1}에 최소 인원을 채우지 못했습니다.")
 
 # **8. AI 질문 생성 함수**
-def generate_openai_response(summary):
+def generate_openai_response(summary, tags):
     prompt = f"""
     다음은 한 그룹의 특징입니다:
 
     {summary}
 
-    이 그룹의 특징을 바탕으로, 해당 그룹 내의 사람들이 서로에게 호감을 가질만한 이유를 분석하고,
-    서로에게 궁금해할 질문 리스트를 만들어 주세요.
+    그룹 내 태그 통계: {tags}
+
+    이 그룹의 특징과 태그 통계를 바탕으로, 해당 그룹 내의 사람들이 서로에게 호감을 가질만한 이유를 분석해주세요. 
+    분석은 가급적 태그 통계에 비중을 높게 두고 분석해주세요. 그리고 서로에게 궁금해할 질문 리스트를 만들어 주세요. 
     """
     try:
         response = openai.ChatCompletion.create(
@@ -305,25 +309,24 @@ def main():
         st.write(df['MBTI'].value_counts())
 
         # 'My answer_tags_'로 시작하는 모든 컬럼 병합하여 'Tags' 컬럼 생성
-        df['Tags'] = df.filter(like='My answer_tags_').apply(lambda row: ','.join(row.dropna()), axis=1)
-        print("병합된 Tags 컬럼 예시: ", df[['User ID', 'Tags']].head())
-
-        # 'My answer_tags_'로 시작하는 모든 컬럼 병합하여 'Tags' 컬럼 생성
-        df['Tags'] = df.filter(like='My answer_tags_').apply(lambda row: ','.join(row.dropna()), axis=1)
-        print("병합된 Tags 컬럼 예시: ", df[['User ID', 'Tags']].head())
+        tag_columns = df.filter(like='My answer_tags_').columns
+        df['Tags'] = df[tag_columns].apply(lambda row: ','.join(row.dropna().astype(str)), axis=1)
 
         for column in config.get("text_columns", []):
             if column in df.columns:
                 df[column + "_tags"] = df[column].apply(lambda x: generate_tags_from_text(column, str(x), config))
+                df['Tags'] = df['Tags'] + ',' + df[column + "_tags"]
                 tag_dummies = process_multi_value_column(column + "_tags", df)
                 df = pd.concat([df, tag_dummies], axis=1)
 
+        # 중복 태그 제거 및 정리
+        df['Tags'] = df['Tags'].apply(lambda x: ','.join(set(tag.strip() for tag in x.split(',') if tag.strip())))
+        st.write("처리 후 Tags 컬럼 예시:", df[['User ID', 'Tags']].head(10))
+        print("처리 후 Tags 컬럼 예시: ", df[['User ID', 'Tags']].head())
 
         hobby_dummies = process_multi_value_column('Hobby', df)
-        # ideal_type_dummies = process_multi_value_column('Ideal Type', df)
         features = pd.get_dummies(df[['Preference', 'MBTI', 'Job', 'Gender']])
         numerical_features = df[['Age', 'Height', 'Weight']]
-        # all_features = pd.concat([features, hobby_dummies, ideal_type_dummies, numerical_features], axis=1)
         all_features = pd.concat([features, hobby_dummies, numerical_features], axis=1)
 
         # 그룹 생성
@@ -346,10 +349,23 @@ def main():
             summary = f"직업: {', '.join(group['Job'].unique())}, " \
                       f"MBTI: {', '.join(group['MBTI'].unique())}, " \
                       f"평균 나이: {group['Age'].mean():.1f}, 성비: {group['Gender'].value_counts().to_dict()}"
+
+            # 그룹의 유효한 Tags 컬럼을 확인하여 결합
+            if 'Tags' in group.columns and not group['Tags'].isna().all():
+                group_tags = ', '.join(group['Tags'].dropna().unique())
+            else:
+                group_tags = "No tags available"
+            print(f"그룹 {idx + 1}의 태그: {group_tags}")
+
             st.write(group)  # 그룹 리스트 표
 
+            # 그룹 태그 통계 계산
+            tag_stats = pd.Series(','.join(group['Tags'].dropna()).split(',')).value_counts()
+            st.markdown("**그룹 태그 통계**")
+            st.write(tag_stats)
+
             # AI 질문 생성
-            ai_questions = generate_openai_response(summary)
+            ai_questions = generate_openai_response(summary, tag_stats)
             st.write("AI 생성 질문:", ai_questions)
             st.markdown("---")
 
@@ -365,6 +381,7 @@ def main():
         if not remaining_users.empty:
             st.markdown("\n ## 🚶‍♂️그룹에 배정되지 않은 사용자:")
             st.write(remaining_users)
+
 
 if __name__ == "__main__":
     main()
