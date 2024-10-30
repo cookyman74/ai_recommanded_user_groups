@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  streamlit-meetup-recommender:
+    image: python:3.12-slim
+    container_name: streamlit_meetup_recommender
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY} # .env 파일에서 환경 변수를 로드합니다.
+    ports:
+      - "8501:8501"  # Streamlit 기본 포트
+    volumes:
+      - .:/app  # 현재 디렉터리를 컨테이너의 /app으로 마운트
+    working_dir: /app
+    command: >
+      bash -c "
+      pip install --no-cache-dir -r requirements.txt &&
+      streamlit run app.py
+      "
+    env_file:
+      - ../.env  # 환경 변수를 로드할 파일 (예: OpenAI API 키)
