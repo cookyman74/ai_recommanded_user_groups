@@ -33,28 +33,20 @@ def load_config():
 
 # 유사도 계산
 def calculate_similarity(user1, user2, feature_weights, all_features):
-    similarity = 0
+    similarity, total_weight = 0, sum(feature_weights.values())
     for feature, weight in feature_weights.items():
         if feature in ['Age', 'Height', 'Weight']:
-            max_val = all_features[feature].max()
-            min_val = all_features[feature].min()
-            if max_val != min_val:
-                norm_diff = abs(user1[feature] - user2[feature]) / (max_val - min_val)
-                similarity += (1 - norm_diff) * weight
-            else:
-                similarity += weight
-        elif 'tags' in feature.lower():  # 태그 유사도 계산
-            # 태그 정규화 (소문자 변환 및 공백 제거)
-            user1_tags = set([tag.strip().lower() for tag in user1[feature].split(',')])
-            user2_tags = set([tag.strip().lower() for tag in user2[feature].split(',')])
-
-            # 교집합 / 합집합으로 유사도 계산
-            tag_similarity = len(user1_tags & user2_tags) / len(
-                user1_tags | user2_tags) if user1_tags | user2_tags else 0
+            max_val, min_val = all_features[feature].max(), all_features[feature].min()
+            similarity += ((1 - abs(user1[feature] - user2[feature]) / (max_val - min_val)) * weight
+                           if max_val != min_val else weight)
+        elif 'tags' in feature.lower():
+            user1_tags = set(map(str.strip, user1[feature].lower().split(',')))
+            user2_tags = set(map(str.strip, user2[feature].lower().split(',')))
+            tag_similarity = len(user1_tags & user2_tags) / len(user1_tags | user2_tags) if user1_tags | user2_tags else 0
             similarity += tag_similarity * weight
         else:
             similarity += (user1[feature] == user2[feature]) * weight
-    return similarity / sum(feature_weights.values())
+    return similarity / total_weight
 
 # 그룹 생성 : 클러스터링 그룹 생성 및 재배정.
 def create_mixed_groups(users_df, all_features, feature_weights, min_group_size=6, max_group_size=8, min_females=3):
