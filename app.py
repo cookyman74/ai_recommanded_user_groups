@@ -248,14 +248,23 @@ def allocate_remaining_users(groups, remaining_males):
 # **8. AI 질문 생성 함수**
 def generate_openai_response(summary, tags):
     prompt = f"""
-    다음은 한 그룹의 특징입니다:
+        다음은 한 그룹의 특징입니다:
 
-    {summary}
+        그룹의 기본 정보:
+        {summary}
 
-    그룹 내 태그 통계: {tags}
+        그룹 내 태그 통계:
+        {tags}
 
-    이 그룹의 특징과 태그 통계를 바탕으로, 해당 그룹 내의 사람들이 서로에게 호감을 가질만한 이유를 분석해주세요. 
-    분석은 가급적 태그 통계에 비중을 높게 두고 분석해주세요. 그리고 서로에게 궁금해할 질문 리스트를 만들어 주세요. 
+        이 그룹의 특징과 태그 통계를 바탕으로, 두 가지 질문에 답변해 주세요.
+
+        ### 1. **모임 내 호감 요인 분석**:
+        - 그룹 내에서 사람들이 서로에게 호감을 느낄 수 있는 요인들을 분석해 주세요. 태그 통계를 기반으로 분석을 진행해 주세요.
+        - 각 항목을 명확하게 구분해 주세요. 예를 들어, "공통의 관심사", "성격적 유사점", "공유된 활동 경험" 등으로 나누어 작성해 주세요.
+
+        ### 2. **서로에게 궁금해할 질문 리스트**:
+        - 각 그룹의 구성원이 서로에게 궁금해할 수 있는 질문 리스트를 작성해 주세요.
+        - 질문을 간단하게 번호로 나누어 주세요. 예: 1. ~ 2. ~ 3. ~ 형식으로 나열해 주세요.
     """
     try:
         response = openai.ChatCompletion.create(
@@ -302,8 +311,18 @@ def main():
         st.write("**지역별 신청자 수**")
         st.write(df['Location'].value_counts())
 
-        st.write("**직업별 분포**")
-        st.write(df['Job'].value_counts())
+        # 직업별 분포 계산
+        job_counts = df['Job'].value_counts()
+
+        # 빈 문자열이 아닌 직업이 있는 경우에만 출력
+        if not (len(job_counts) == 1 and job_counts.index[0] == "N"):
+            st.write("**직업별 분포**")
+            # 빈 문자열 항목 제거
+            valid_job_counts = job_counts[job_counts.index != "N"]
+            if not valid_job_counts.empty:
+                st.write(valid_job_counts)
+            else:
+                st.write("유효한 직업 데이터가 없습니다.")
 
         st.write("**MBTI별 분포**")
         st.write(df['MBTI'].value_counts())
@@ -366,7 +385,8 @@ def main():
 
             # AI 질문 생성
             ai_questions = generate_openai_response(summary, tag_stats)
-            st.write("AI 생성 질문:", ai_questions)
+            st.write("AI 생성 질문:")
+            st.write(ai_questions)
             st.markdown("---")
 
         # 전체 그룹 구성 요약
